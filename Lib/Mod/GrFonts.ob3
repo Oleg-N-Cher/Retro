@@ -1,0 +1,9 @@
+MODULE [noinit] GrFonts;
+
+TYPE
+  Font* = ARRAY OF CHAR;
+
+VAR
+  ZxSpecRom8x8-: ARRAY 8 * (128 - 32) OF CHAR;
+
+END GrFonts.

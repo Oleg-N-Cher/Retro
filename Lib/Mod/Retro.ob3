@@ -1,0 +1,177 @@
+MODULE Retro; IMPORT SYSTEM, w := WinApi, i := Ignore;
+
+CONST
+  Scaler = 2;
+  IconId = 101;
+  BorderWidth = 16;
+  BorderHeight = 16;
+
+TYPE
+  Color = INTEGER;
+  PixelArray = ARRAY OF ARRAY OF Color;
+
+VAR
+  redraw*: BOOLEAN;
+  border: Color;
+  pixdata: w.PtrVoid;
+  width, height: INTEGER; (* Screen size *)
+  bi: w.BITMAPINFO; wnd: w.HWND; timer: w.HANDLE;
+
+PROCEDURE Border* (color: Color);
+  TYPE RGB = RECORD [notag] r, g, b, a: INT8 END;
+  VAR rgb: RGB; tmp: INT8;
+BEGIN
+  rgb := SYSTEM.VAL(RGB, color);
+  tmp := rgb.r; rgb.r := rgb.b; rgb.b := tmp;
+  border := SYSTEM.VAL(Color, rgb);
+END Border;
+
+PROCEDURE UpdateScreen;
+TYPE
+  PBITMAPINFO = POINTER [notag] TO w.BITMAPINFO;
+VAR
+  hdc, brush: w.HDC; rect: w.RECT;
+  (*ps: TPaintStruct;
+  dx, dy: DWORD;
+  addX, addY: INTEGER;*)
+BEGIN
+  hdc := w.GetDC(wnd);
+  (* Draw border *)
+  brush := w.CreateSolidBrush(border);
+  i.Int( w.SelectObject(hdc, brush) );
+  i.Int( w.GetClientRect(wnd, @rect) );
+  i.Int( w.FillRect(hdc, @rect, 0) );
+  i.Int( w.DeleteObject(brush) );
+(*
+  res := w.GetWindowRect(wnd, @rect);
+  res := w.GetClientRect(wnd, @cRect);
+  addX := (rect.right - rect.left) - (cRect.right - cRect.left) - 1;
+  addY := (rect.bottom - rect.top) - (cRect.bottom - cRect.top) - 1;
+
+  if Scaler = 0 then
+  begin
+    GetClientRect(0, Rect);
+    DX := GetSystemMetrics(SM_CXSCREEN);
+    DY := GetSystemMetrics(SM_CYSCREEN);
+    SetWindowPos(Window, HWND_TOP, 0, 0, DX, DY, SWP_SHOWWINDOW);
+  end else
+  if Scaler < 5 then
+  begin
+    dx := Scaler * 256;
+    dy := Scaler * 192;
+    w.SetWindowPos(wnd, w.HWND_TOP, rect.left, rect.top, dx + addX, dy + addY, w.SWP_SHOWWINDOW);
+  end;
+  Scaler := $FF;*)
+
+  i.Int( w.GetClientRect(wnd, @rect) );
+  i.Int(
+    w.StretchDIBits( (* rect.right - rect.left, rect.bottom - rect.top *)
+      hdc, BorderWidth, BorderHeight, Scaler*width, Scaler*height,
+      0, 0, width, height, pixdata, @bi, w.DIB_RGB_COLORS, w.SRCCOPY
+    ));
+  i.Int( w.ReleaseDC(wnd, hdc) );
+  redraw := FALSE;
+END UpdateScreen;
+
+PROCEDURE [stdcall] MyWndProc (
+  wnd: w.HWND; msg: INTEGER; wParam: w.WPARAM; lParam: w.LPARAM): w.LRESULT;
+BEGIN
+  CASE msg OF
+  | w.WM_TIMER:
+      IF redraw THEN UpdateScreen; RETURN 0 END
+  | w.WM_ERASEBKGND:
+      UpdateScreen; RETURN 1
+  | w.WM_DESTROY:
+      w.PostQuitMessage(0); RETURN 0
+  ELSE END;
+  RETURN w.DefWindowProc(wnd, msg, wParam, lParam)
+END MyWndProc;
+
+PROCEDURE SetWindowScaler;
+VAR
+  rect, cRect: w.RECT; addX, addY: INTEGER;
+BEGIN
+  i.Int( w.GetWindowRect(wnd, @rect) );
+  i.Int( w.GetClientRect(wnd, @cRect) );
+  addX := (rect.right - rect.left) - (cRect.right - cRect.left) + 2*BorderWidth;
+  addY := (rect.bottom - rect.top) - (cRect.bottom - cRect.top) + 2*BorderHeight;
+  i.Int(
+    w.SetWindowPos(wnd, w.HWND_TOP,
+    rect.left + BorderWidth, rect.top + BorderHeight,
+    width*Scaler + addX, height*Scaler + addY, w.SWP_SHOWWINDOW)
+  );
+END SetWindowScaler;
+
+PROCEDURE OpenWindow* (VAR scr: PixelArray; title: ARRAY OF CHAR);
+VAR
+  instance: w.HINSTANCE; wc: w.WNDCLASS; hdc: w.HDC;
+BEGIN
+  width := LEN(scr, 1); height := LEN(scr, 0);
+  instance := w.GetModuleHandle(NIL);
+  (* Create bitmap info header *)
+  bi.bmiHeader.biSize := SIZE(w.BITMAPINFOHEADER);
+  bi.bmiHeader.biWidth := width;
+  bi.bmiHeader.biHeight := -height;
+  bi.bmiHeader.biBitCount := 32;
+  bi.bmiHeader.biPlanes := 1;
+  bi.bmiHeader.biCompression := w.BI_RGB;
+  (* Create window *)
+  wc.style := w.CS_HREDRAW + w.CS_VREDRAW;
+  wc.lpfnWndProc := MyWndProc;
+  wc.cbClsExtra := 0;
+  wc.cbWndExtra := 0;
+  wc.hInstance := instance;
+  wc.hIcon := w.LoadIcon(instance, SYSTEM.VAL(w.PtrSTR, IconId));
+  wc.hCursor := w.LoadCursor(0, SYSTEM.VAL(w.PtrSTR, w.IDC_ARROW));
+  wc.hbrBackground := 0;
+  wc.lpszMenuName := NIL;
+  wc.lpszClassName := title;
+  IF w.RegisterClass(@wc) = 0 THEN HALT(1) END;
+  wnd := w.CreateWindowEx(
+    {}, title, title, w.WS_OVERLAPPEDWINDOW, w.CW_USEDEFAULT,
+    0, width * Scaler, height * Scaler, 0, 0, instance, 0
+  );
+  pixdata := SYSTEM.ADR(scr);
+  SetWindowScaler;
+  i.Int( w.ShowWindow(wnd, w.SW_SHOW) );
+  timer := w.SetTimer(wnd, 0FFFFH, 20, NIL);
+END OpenWindow;
+
+PROCEDURE ProcessMessages;
+  VAR msg: w.MSG;
+BEGIN
+  WHILE w.PeekMessage(@msg, 0, 0, 0, w.PM_REMOVE) # 0 DO
+    IF msg.message = w.WM_QUIT THEN
+       i.Int( w.KillTimer(wnd, timer) );
+       HALT(0)
+    ELSE
+      i.Int( w.TranslateMessage(@msg) );
+      i.Int( w.DispatchMessage(@msg) );
+    END;
+  END;
+END ProcessMessages;
+
+PROCEDURE Delay* (ms: INTEGER);
+  CONST Ms = 20;
+BEGIN
+  WHILE ms > 0 DO
+    ProcessMessages;
+    IF ms > Ms THEN w.Sleep(Ms); DEC(ms, Ms);
+    ELSE w.Sleep(ms); ms := 0;
+    END;
+  END;
+  ProcessMessages;
+END Delay;
+
+PROCEDURE MainLoop*;
+  VAR msg: w.MSG;
+BEGIN
+  WHILE w.GetMessage(@msg, 0, 0, 0) # 0 DO
+    i.Int( w.TranslateMessage(@msg) );
+    i.Int( w.DispatchMessage(@msg) );
+  END;
+  i.Int( w.KillTimer(wnd, timer) );
+  HALT(0)
+END MainLoop;
+
+END Retro.

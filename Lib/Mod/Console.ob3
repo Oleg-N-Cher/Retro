@@ -1,0 +1,10 @@
+MODULE Console; IMPORT b := Basic;
+
+PROCEDURE WriteCh* (ch: CHAR);
+BEGIN
+  b.PRCHAR(ch);
+END WriteCh;
+
+BEGIN
+  b.Init
+END Console.

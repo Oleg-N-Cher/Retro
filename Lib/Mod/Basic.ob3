@@ -1,0 +1,147 @@
+MODULE Basic; IMPORT SYSTEM, Retro, GrFonts, cfg := RetroCfg;
+
+TYPE
+  Color* = INTEGER;
+  Coords* = INTEGER;
+  TextCoords* = INTEGER;
+  Font = POINTER [notag] TO ARRAY [notag] OF CHAR;
+  Tile = POINTER [notag] TO ARRAY [notag] OF CHAR;
+  Palette = ARRAY 16 OF Color;
+
+CONST
+  Black        * =   0;
+  Blue         * =   1;
+  Red          * =   2;
+  Magenta      * =   3;
+  Green        * =   4;
+  Cyan         * =   5;
+  Olive        * =   6;
+  LightGray    * =   7;
+  Paper        * =   8;
+  Bright       * = 40H;
+  Flash        * = 80H;
+  LightBlue    * = Blue;
+  LightRed     * = Red;
+  LightMagenta * = Magenta;
+  LightGreen   * = Green;
+  LightCyan    * = Cyan;
+  Yellow       * = Olive;
+  White        * = LightGray;
+  On           * = 1;
+  Off          * = 0;
+  WaitAKey* = 0; NoKeys* = 0X;
+
+  Width = 256;
+  Height = 192;
+  Colors = Palette(
+    0, 00000B0H, 0B00000H, 0B000B0H, 000B000H, 000B0B0H, 0B0B000H, 0B0B0B0H,
+    0, 00000FFH, 0FF0000H, 0FF00FFH, 000FF00H, 000FFFFH, 0FFFF00H, 0FFFFFFH
+  );
+
+VAR
+  scr*: ARRAY Height, Width OF Color;
+  atr*: ARRAY 24, 32 OF INT8; ATTR_P*: INT8;
+  pal*: Palette;
+  charX, charY: Coords; (* character coords {0..31, 0..23} *)
+  font: Font; (* font address *)
+
+PROCEDURE Init*;
+END Init;
+
+PROCEDURE Quit*;
+BEGIN
+  Retro.MainLoop
+END Quit;
+
+PROCEDURE Redraw*;
+BEGIN
+  Retro.redraw := TRUE;
+END Redraw;
+
+PROCEDURE AT* (y, x: Coords);
+BEGIN
+  ASSERT((0 <= x) & (x <= 31) & (0 <= y) & (y <= 23));
+  charX := x; charY := y;
+END AT;
+
+PROCEDURE BORDER* (color: INTEGER);
+BEGIN
+  ASSERT((0 <= color) & (color <= 15));
+  Retro.Border(pal[color]);
+  Retro.redraw := TRUE;
+END BORDER;
+
+PROCEDURE COLOR* (atr: INT8);
+BEGIN
+  ATTR_P := atr;
+  Retro.redraw := TRUE;
+END COLOR;
+
+PROCEDURE CLS*;
+VAR
+  adr: ADRINT; n: INTEGER; paper: Color;
+BEGIN
+  paper := pal[ATTR_P DIV 8 MOD 16]; adr := SYSTEM.ADR(scr);
+  FOR n := 0 TO Width*Height - 1 DO
+    SYSTEM.PUT(adr, paper); INC(adr, 4);
+  END;
+  FOR n := 0 TO 768-1 DO SYSTEM.PUT(SYSTEM.ADR(atr)+n, ATTR_P) END;
+  Retro.redraw := TRUE;
+END CLS;
+
+PROCEDURE FONT* (adr: Font);
+BEGIN
+  font := adr;
+END FONT;
+
+PROCEDURE PAUSE* (ms: INTEGER);
+BEGIN
+  Retro.Delay(ms*20);
+END PAUSE;
+
+PROCEDURE- AincludeGrTiles '#include "GrTiles.oh"';
+PROCEDURE- DrawMonoTile8x8 (x, y: Coords; tile: Tile; atr: INT8)
+  "GrTiles_DrawMonoTile8x8(x, y, tile, atr)";
+
+PROCEDURE PRCHAR* (ch: CHAR);
+BEGIN
+  ASSERT((20X <= ch) & (ch <= 7FX));
+  DrawMonoTile8x8(
+    charX, charY,
+    SYSTEM.VAL(Tile, SYSTEM.ADR(font[(ORD(ch) - 20H) * 8])),
+    ATTR_P
+  );
+  INC(charX); IF charX > 31 THEN charX := 0; INC(charY) END;
+END PRCHAR;
+
+PROCEDURE PRSTR* (str: ARRAY OF CHAR);
+VAR
+  n: INTEGER;
+BEGIN
+  n := 0;
+  WHILE (n < LEN(str)) & (str[n] # 0X) DO
+    PRCHAR(str[n]); INC(n);
+  END;
+END PRSTR;
+
+PROCEDURE PRINT* (n: INTEGER);
+VAR
+  i: INTEGER; buf: ARRAY 10 OF CHAR;
+BEGIN
+  IF n < 0 THEN
+    IF n = MIN(INTEGER) THEN PRSTR("-2147483648"); RETURN END;
+    PRCHAR("-"); n := -n;
+  END;
+  i := 0;
+  REPEAT
+    buf[i] := CHR(n MOD 10 + ORD("0")); n := n DIV 10; INC(i);
+  UNTIL n = 0;
+  REPEAT DEC(i); PRCHAR(buf[i]) UNTIL i = 0;
+END PRINT;
+
+BEGIN
+  charX := 0; charY := 0; ATTR_P := 38H; pal := Colors;
+  IF cfg.FontZX THEN font := GrFonts.ZxSpecRom8x8 END;
+  Retro.Border(0B0B0B0H);
+  Retro.OpenWindow(@scr, "Retro ZX Engine v1.0.0 256x192x15");
+END Basic.

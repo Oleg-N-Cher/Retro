@@ -1,0 +1,6 @@
+MODULE [noinit] RetroCfg;
+
+CONST
+  FontZX* = TRUE;
+
+END RetroCfg.

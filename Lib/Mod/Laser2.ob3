@@ -1,0 +1,67 @@
+MODULE Laser2; IMPORT SYSTEM, b := Basic, GrTiles;
+
+TYPE
+  Coords = INTEGER;
+  Sprites = ARRAY OF CHAR;
+
+VAR
+  spr: POINTER [notag] TO ARRAY [notag] OF CHAR;
+  sprlen: INTEGER;
+  aton: BOOLEAN;
+
+PROCEDURE ATOF*;
+BEGIN
+  aton := FALSE;
+END ATOF;
+
+PROCEDURE ATON*;
+BEGIN
+  aton := TRUE;
+END ATON;
+
+PROCEDURE FindSprite (spn: INTEGER): INTEGER;
+  VAR i: INTEGER;
+BEGIN
+  i := 0;
+  LOOP
+    ASSERT(i < sprlen-3); (* N low high *)
+    IF spr[i] = CHR(spn) THEN RETURN i+3 END;
+    INC(i, ORD(spr[i+1]) + 256*ORD(spr[i+2]) + 2);
+  END
+END FindSprite;
+
+PROCEDURE SPRT* (arr: Sprites); (** Set address of sprites data *)
+BEGIN
+  spr := arr; sprlen := LEN(arr);
+END SPRT;
+
+(*     #1: sprite number
+       #2: sprite size low byte (9*HGT*LEN+3).
+       #3: sprite size high byte
+       #4: sprite length
+       #5: sprite height
+8*HGT*LEN: pixel data
+  HGT*LEN: attributes
+    = 9*HGT*LEN+5 bytes
+*)
+
+PROCEDURE PTBL* (x, y: Coords; spn: INTEGER);
+  VAR a, i: INTEGER; xx, yy, len, hgt: Coords; atr: INT8;
+BEGIN
+  i := FindSprite(spn);
+  len := ORD(spr[i]); INC(i); hgt := ORD(spr[i]); INC(i);
+  a := i + len*hgt*8;
+  FOR yy := y TO y + hgt - 1 DO
+    FOR xx := x TO x + len - 1 DO
+      IF aton THEN atr := SYSTEM.VAL(INT8, spr[a]); INC(a);
+      ELSE atr := b.atr[yy, xx];
+      END;
+      GrTiles.DrawMonoTile8x8(xx, yy,
+        SYSTEM.VAL(GrTiles.Tile, SYSTEM.ADR(spr[i])), atr        
+      );
+      INC(i, 8);
+    END;
+  END;
+END PTBL;
+
+END Laser2.

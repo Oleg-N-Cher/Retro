@@ -1,0 +1,28 @@
+MODULE GrTiles; IMPORT SYSTEM, b := Basic;
+
+TYPE
+  Tile* = POINTER [notag] TO ARRAY [notag] OF CHAR;
+  MonoTile8x8* = ARRAY 8 OF CHAR;
+  Color = INTEGER;
+  Coords = INTEGER;
+
+PROCEDURE DrawMonoTile8x8* (x, y: Coords; tile: Tile; atr: INT8);
+VAR
+  mask: INT8; byte, bit: INTEGER; ink, paper: Color;
+BEGIN
+  ASSERT((0 <= x) & (x <= 31) & (0 <= y) & (y <= 23));
+  b.atr[y, x] := b.ATTR_P;
+  x := x * 8; y := y * 8; paper := b.pal[atr DIV 8 MOD 16];
+  ink := b.pal[atr MOD 8 + 8*ORD(6 IN BITS(atr))];
+  FOR byte := 0 TO 7 DO
+    mask := SYSTEM.VAL(INT8, tile[byte]);
+    FOR bit := x TO x+7 DO
+      IF mask < 0 THEN b.scr[y, bit] := ink ELSE b.scr[y, bit] := paper END;
+      mask := 2*mask;
+    END;
+    INC(y);
+  END;
+  b.Redraw;
+END DrawMonoTile8x8;
+
+END GrTiles.
